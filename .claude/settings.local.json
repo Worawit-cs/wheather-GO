@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go get *)",
+      "Bash(chmod +x *)",
+      "Bash(go build *)",
+      "Bash(PORT=13001 go run .)",
+      "Bash(curl -s http://localhost:13001/health)",
+      "Bash(curl -s -X POST http://localhost:13001/api/sensor -H 'Content-Type: application/json' -d '{\"location\":\"west\",\"humidity\":85,\"temperature\":28,\"water_detected\":0}')",
+      "Bash(curl -s http://localhost:13001/api/alert/latest)",
+      "Bash(kill %1)"
+    ]
+  }
+}
