@@ -153,6 +153,8 @@ Open `.env` and fill in your values:
 ```env
 PORT=3000
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
+AQI_TOKEN = "your Token"
+CITY_CODE="your city code" (optiional)
 LAT=13.7563
 LON=100.5018
 ```
