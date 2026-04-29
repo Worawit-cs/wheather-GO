@@ -104,6 +104,8 @@ func testPeroidWeatherHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fetchWeather()
+
 	var weather WeatherData
 	err := db.QueryRow(
 		`SELECT temperature, humidity, rain_probability, rainfall, wind_speed, wind_direction
@@ -118,15 +120,10 @@ func testPeroidWeatherHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var s SensorData
-	err = db.QueryRow(
-		`SELECT sensor_location, humidity, temperature, water_detected
-		 FROM sensor_data ORDER BY id DESC LIMIT 1`,
-	).Scan(&s.Location, &s.Humidity, &s.Temperature, &s.WaterDetected)
-	if err == sql.ErrNoRows {
-		s.Location = "weather-api"
-		s.Humidity = weather.Humidity
-		s.Temperature = weather.Temperature
+	s := SensorData{
+		Location:    "weather-api",
+		Humidity:    weather.Humidity,
+		Temperature: weather.Temperature,
 	}
 
 	var risk string
