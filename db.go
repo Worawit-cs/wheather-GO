@@ -30,7 +30,9 @@ func initDB() {
 			rain_probability REAL,
 			rainfall         REAL,
 			wind_speed       REAL,
-			wind_direction   REAL
+			wind_direction   REAL,
+			weather_code     INTEGER DEFAULT 0,
+			weather_code_text TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS sensor_data (
 			id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +55,10 @@ func initDB() {
 			log.Fatal("Failed to create table:", err)
 		}
 	}
+
+	// Migrations for existing DB — errors ignored when column already exists
+	db.Exec(`ALTER TABLE weather_data ADD COLUMN weather_code INTEGER DEFAULT 0`)
+	db.Exec(`ALTER TABLE weather_data ADD COLUMN weather_code_text TEXT DEFAULT ''`)
 
 	log.Println("Database initialized")
 }

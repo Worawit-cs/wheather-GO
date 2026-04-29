@@ -17,12 +17,12 @@ const (
 )
 
 type discordEmbed struct {
-	Title       string         `json:"title"`
-	Description string         `json:"description,omitempty"`
-	Color       int            `json:"color"`
-	Fields      []embedField   `json:"fields,omitempty"`
-	Footer      *embedFooter   `json:"footer,omitempty"`
-	Timestamp   string         `json:"timestamp"`
+	Title       string       `json:"title"`
+	Description string       `json:"description,omitempty"`
+	Color       int          `json:"color"`
+	Fields      []embedField `json:"fields,omitempty"`
+	Footer      *embedFooter `json:"footer,omitempty"`
+	Timestamp   string       `json:"timestamp"`
 }
 
 type embedField struct {
@@ -65,16 +65,50 @@ func sendDiscord(payload discordPayload) {
 	}
 }
 
-func sendUrgentAlert(w WeatherData, s SensorData) {
+func hourlyField(label, t string, snap HourlySnapshot) embedField {
+	return embedField{
+		Name: label + " (" + shortTime(t) + ")",
+		Value: fmt.Sprintf(
+			"🌡️ %.1f°C  💧 %d%%  🌬️ %.1f km/h\n🌧️ Rain: %.1fmm  📊 Prob: %d%%  ☁️ %s",
+			snap.Temperature, snap.RelativeHumidity, snap.WindSpeed,
+			snap.Rain, snap.PrecipitationProb, snap.WeatherCodeText,
+		),
+		Inline: false,
+	}
+}
+
+func forecastField(label, t string, snap HourlySnapshot) embedField {
+	return embedField{
+		Name: label + " (" + shortTime(t) + ")",
+		Value: fmt.Sprintf(
+			"🌡️ %.1f°C  📊 Rain prob: %d%%  ☁️ %s",
+			snap.Temperature, snap.PrecipitationProb, snap.WeatherCodeText,
+		),
+		Inline: false,
+	}
+}
+
+func shortTime(t string) string {
+	// t is "2006-01-02T15:04" — extract HH:MM
+	if len(t) >= 16 {
+		return t[11:16]
+	}
+	return t
+}
+
+func sendUrgentAlert(report *WeatherReport) {
+	c := report.Current
 	embed := discordEmbed{
 		Title: "🚨 FLOOD RISK ALERT — HIGH",
 		Color: colorRed,
 		Fields: []embedField{
-			{Name: "🌧️ Rain Probability", Value: fmt.Sprintf("%.0f%%", w.RainProbability), Inline: true},
-			{Name: "🌬️ Wind Direction", Value: fmt.Sprintf("%.0f° (West)", w.WindDirection), Inline: true},
-			{Name: "💧 Sensor Humidity", Value: fmt.Sprintf("%.0f%%", s.Humidity), Inline: true},
-			{Name: "🌡️ Temperature", Value: fmt.Sprintf("%.1f°C", s.Temperature), Inline: true},
-			{Name: "💦 Water Detected", Value: waterLabel(s.WaterDetected), Inline: true},
+			{Name: "🌧️ Rain Probability (next 1h)", Value: fmt.Sprintf("%d%%", report.Next1Hour.PrecipitationProb), Inline: true},
+			{Name: "🌬️ Wind Direction", Value: fmt.Sprintf("%.0f°", c.WindDirection), Inline: true},
+			{Name: "💨 Wind Speed", Value: fmt.Sprintf("%.1f km/h", c.WindSpeed), Inline: true},
+			{Name: "🌡️ Temperature", Value: fmt.Sprintf("%.1f°C", c.Temperature), Inline: true},
+			{Name: "💧 Humidity", Value: fmt.Sprintf("%d%%", c.RelativeHumidity), Inline: true},
+			{Name: "☁️ Condition", Value: c.WeatherCodeText, Inline: true},
+			{Name: "🔬 Sensor", Value: "Location: -  |  Humidity: -  |  Temp: -  |  Water: -", Inline: false},
 		},
 		Footer:    &embedFooter{Text: "West side of house at risk"},
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -99,7 +133,7 @@ func sendAllClear() {
 	log.Println("All Clear sent to Discord")
 }
 
-func sendPeriodicReport(w WeatherData, s SensorData, risk string) {
+func sendPeriodicReport(report *WeatherReport, risk string) {
 	color := colorGreen
 	title := "📊 Weather Report — LOW"
 	switch risk {
@@ -111,28 +145,32 @@ func sendPeriodicReport(w WeatherData, s SensorData, risk string) {
 		title = "📊 Weather Report — HIGH 🚨"
 	}
 
-	embed := discordEmbed{
-		Title: title,
-		Color: color,
-		Fields: []embedField{
-			{Name: "🌧️ Rain Probability", Value: fmt.Sprintf("%.0f%%", w.RainProbability), Inline: true},
-			{Name: "🌬️ Wind Direction", Value: fmt.Sprintf("%.0f°", w.WindDirection), Inline: true},
-			{Name: "🌡️ Outdoor Temp", Value: fmt.Sprintf("%.1f°C", w.Temperature), Inline: true},
-			{Name: "💧 Sensor Humidity", Value: fmt.Sprintf("%.0f%%", s.Humidity), Inline: true},
-			{Name: "🌡️ Sensor Temp", Value: fmt.Sprintf("%.1f°C", s.Temperature), Inline: true},
-			{Name: "💦 Water Detected", Value: waterLabel(s.WaterDetected), Inline: true},
+	c := report.Current
+	fields := []embedField{
+		hourlyField("⏪ 1 Hour Ago", report.PastHour.Time, report.PastHour),
+		{
+			Name: "📍 Now (" + shortTime(c.Time) + ")",
+			Value: fmt.Sprintf(
+				"🌡️ %.1f°C  💧 %d%%  🌬️ %.1f km/h (%.0f°)\n🌧️ Rain: %.1fmm  ☁️ %s",
+				c.Temperature, c.RelativeHumidity, c.WindSpeed, c.WindDirection,
+				c.Rain, c.WeatherCodeText,
+			),
+			Inline: false,
 		},
+		forecastField("🔮 +1h", report.Next1Hour.Time, report.Next1Hour),
+		forecastField("🔮 +2h", report.Next2Hours.Time, report.Next2Hours),
+		forecastField("🔮 +3h", report.Next3Hours.Time, report.Next3Hours),
+		{Name: "🔬 Sensor", Value: "Location: -  |  Humidity: -  |  Temp: -  |  Water: -", Inline: false},
+	}
+
+	embed := discordEmbed{
+		Title:     title,
+		Color:     color,
+		Fields:    fields,
 		Footer:    &embedFooter{Text: "Next report in 3 hours"},
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
 	sendDiscord(discordPayload{Embeds: []discordEmbed{embed}})
 	log.Println("Periodic report sent to Discord")
-}
-
-func waterLabel(v int) string {
-	if v == 1 {
-		return "Yes 💦"
-	}
-	return "No"
 }

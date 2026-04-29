@@ -19,6 +19,7 @@ func main() {
 	http.HandleFunc("/api/sensor", sensorHandler)
 	http.HandleFunc("/api/alert/latest", latestAlertHandler)
 	http.HandleFunc("/api/weather/fetch", weatherFetchHandler)
+	http.HandleFunc("/api/weather/report", weatherReportHandler)
 	http.HandleFunc("/api/test/high-risk", testHighRiskHandler)
 	http.HandleFunc("/api/test/peroid", testPeroidWeatherHandler)
 	http.HandleFunc("/health", healthHandler)

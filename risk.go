@@ -36,27 +36,22 @@ func checkRisk() {
 		return
 	}
 
-	var s SensorData
-	err = db.QueryRow(
-		`SELECT sensor_location, humidity, temperature, water_detected
-		 FROM sensor_data ORDER BY id DESC LIMIT 1`,
-	).Scan(&s.Location, &s.Humidity, &s.Temperature, &s.WaterDetected)
-	if err == sql.ErrNoRows {
-		// No ESP32 connected yet — fall back to outdoor humidity from weather API
-		s.Location = "weather-api"
-		s.Humidity = w.Humidity
-		s.Temperature = w.Temperature
-		log.Println("No sensor data, using weather API humidity as fallback")
-	} else if err != nil {
-		log.Println("Risk check sensor query error:", err)
-		return
-	}
+	// ESP32 sensor query — uncomment when board is connected
+	// var s SensorData
+	// err = db.QueryRow(
+	// 	`SELECT sensor_location, humidity, temperature, water_detected
+	// 	 FROM sensor_data ORDER BY id DESC LIMIT 1`,
+	// ).Scan(&s.Location, &s.Humidity, &s.Temperature, &s.WaterDetected)
+	// if err != nil && err != sql.ErrNoRows {
+	// 	log.Println("Risk check sensor query error:", err)
+	// 	return
+	// }
 
-	// Classify risk
+	// Risk classification based on weather data only (no sensor required)
 	newRisk := "LOW"
-	if w.RainProbability > 70 && isWestWind(w.WindDirection) && s.Humidity > 80 {
+	if w.RainProbability > 70 && isWestWind(w.WindDirection) {
 		newRisk = "HIGH"
-	} else if w.RainProbability > 50 && s.Humidity > 70 {
+	} else if w.RainProbability > 50 {
 		newRisk = "MEDIUM"
 	}
 
@@ -85,10 +80,19 @@ func checkRisk() {
 	// Notify Discord based on transition
 	switch {
 	case newRisk == "HIGH":
-		sendUrgentAlert(w, s)
+		report, fetchErr := fetchWeatherReport()
+		if fetchErr != nil {
+			log.Println("Could not fetch report for urgent alert:", fetchErr)
+		} else {
+			sendUrgentAlert(report)
+		}
 	case newRisk == "MEDIUM":
-		// Escalation to medium: send as periodic-style embed (no @everyone)
-		sendPeriodicReport(w, s, "MEDIUM")
+		report, fetchErr := fetchWeatherReport()
+		if fetchErr != nil {
+			log.Println("Could not fetch report for medium alert:", fetchErr)
+		} else {
+			sendPeriodicReport(report, "MEDIUM")
+		}
 	case newRisk == "LOW" && riskRank(lastRisk) > 0:
 		sendAllClear()
 	}

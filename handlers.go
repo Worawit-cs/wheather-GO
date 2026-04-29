@@ -19,17 +19,17 @@ func sensorHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.Exec(
-		`INSERT INTO sensor_data (sensor_location, humidity, temperature, water_detected) VALUES (?, ?, ?, ?)`,
-		s.Location, s.Humidity, s.Temperature, s.WaterDetected,
-	)
-	if err != nil {
-		log.Println("Failed to insert sensor data:", err)
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-
-	checkRisk()
+	// ESP32 DB write disabled — uncomment when board is connected
+	// _, err := db.Exec(
+	// 	`INSERT INTO sensor_data (sensor_location, humidity, temperature, water_detected) VALUES (?, ?, ?, ?)`,
+	// 	s.Location, s.Humidity, s.Temperature, s.WaterDetected,
+	// )
+	// if err != nil {
+	// 	log.Println("Failed to insert sensor data:", err)
+	// 	http.Error(w, "Database error", http.StatusInternalServerError)
+	// 	return
+	// }
+	_ = s // suppress unused variable warning until ESP32 is reconnected
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok"}`))
@@ -71,8 +71,25 @@ func weatherFetchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-// testHighRiskHandler inserts fake high-risk weather+sensor data and fires checkRisk.
-// Use this to verify Discord notifications work without waiting for real rain.
+// weatherReportHandler returns a fresh WeatherReport JSON (past 1h, now, next 1/2/3h).
+func weatherReportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	report, err := fetchWeatherReport()
+	if err != nil {
+		log.Println("weatherReportHandler error:", err)
+		http.Error(w, "Failed to fetch weather", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
+}
+
+// testHighRiskHandler injects fake high-risk weather data and fires checkRisk.
 func testHighRiskHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -80,12 +97,12 @@ func testHighRiskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fake weather: heavy rain probability, west wind
-	db.Exec(`INSERT INTO weather_data (temperature, humidity, rain_probability, rainfall, wind_speed, wind_direction)
-		VALUES (28.0, 85.0, 80.0, 5.0, 20.0, 270.0)`)
+	db.Exec(`INSERT INTO weather_data (temperature, humidity, rain_probability, rainfall, wind_speed, wind_direction, weather_code, weather_code_text)
+		VALUES (28.0, 85.0, 80.0, 5.0, 20.0, 270.0, 63, 'Moderate rain')`)
 
-	// Fake sensor: high west-side humidity
-	db.Exec(`INSERT INTO sensor_data (sensor_location, humidity, temperature, water_detected)
-		VALUES ('west', 90.0, 28.0, 1)`)
+	// Mock sensor INSERT disabled — uncomment when ESP32 is connected
+	// db.Exec(`INSERT INTO sensor_data (sensor_location, humidity, temperature, water_detected)
+	// 	VALUES ('west', 90.0, 28.0, 1)`)
 
 	checkRisk()
 
@@ -104,26 +121,11 @@ func testPeroidWeatherHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fetchWeather()
-
-	var weather WeatherData
-	err := db.QueryRow(
-		`SELECT temperature, humidity, rain_probability, rainfall, wind_speed, wind_direction
-		 FROM weather_data ORDER BY id DESC LIMIT 1`,
-	).Scan(&weather.Temperature, &weather.Humidity, &weather.RainProbability, &weather.Rainfall, &weather.WindSpeed, &weather.WindDirection)
-	if err == sql.ErrNoRows {
-		http.Error(w, "No weather data yet", http.StatusNotFound)
-		return
-	}
+	report, err := fetchWeatherReport()
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		log.Println("testPeroidWeatherHandler error:", err)
+		http.Error(w, "Failed to fetch weather", http.StatusInternalServerError)
 		return
-	}
-
-	s := SensorData{
-		Location:    "weather-api",
-		Humidity:    weather.Humidity,
-		Temperature: weather.Temperature,
 	}
 
 	var risk string
@@ -132,7 +134,7 @@ func testPeroidWeatherHandler(w http.ResponseWriter, r *http.Request) {
 		risk = "LOW"
 	}
 
-	sendPeriodicReport(weather, s, risk)
+	sendPeriodicReport(report, risk)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok","note":"Triggered periodic report — check Discord"}`))

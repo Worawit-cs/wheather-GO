@@ -19,29 +19,21 @@ func startCron() {
 	// Goroutine 2: send periodic Discord report every 3 hours
 	go func() {
 		for {
-			time.Sleep(3 * time.Hour)
-
-			var w WeatherData
-			err := db.QueryRow(
-				`SELECT temperature, humidity, rain_probability, rainfall, wind_speed, wind_direction
-				 FROM weather_data ORDER BY id DESC LIMIT 1`,
-			).Scan(&w.Temperature, &w.Humidity, &w.RainProbability, &w.Rainfall, &w.WindSpeed, &w.WindDirection)
-			if err == sql.ErrNoRows {
-				log.Println("Periodic report skipped: no weather data yet")
+			report, err := fetchWeatherReport()
+			if err != nil {
+				log.Println("Periodic report skipped: could not fetch weather:", err)
 				continue
 			}
 
-			var s SensorData
-			err = db.QueryRow(
-				`SELECT sensor_location, humidity, temperature, water_detected
-				 FROM sensor_data ORDER BY id DESC LIMIT 1`,
-			).Scan(&s.Location, &s.Humidity, &s.Temperature, &s.WaterDetected)
-			if err == sql.ErrNoRows {
-				// No ESP32 yet — use weather API values as fallback
-				s.Location = "weather-api"
-				s.Humidity = w.Humidity
-				s.Temperature = w.Temperature
-			}
+			// ESP32 sensor query — uncomment when board is connected
+			// var s SensorData
+			// err = db.QueryRow(
+			// 	`SELECT sensor_location, humidity, temperature, water_detected
+			// 	 FROM sensor_data ORDER BY id DESC LIMIT 1`,
+			// ).Scan(&s.Location, &s.Humidity, &s.Temperature, &s.WaterDetected)
+			// if err != nil && err != sql.ErrNoRows {
+			// 	log.Println("Periodic report sensor query error:", err)
+			// }
 
 			var risk string
 			err = db.QueryRow(`SELECT risk_level FROM alerts ORDER BY id DESC LIMIT 1`).Scan(&risk)
@@ -49,9 +41,13 @@ func startCron() {
 				risk = "LOW"
 			}
 
-			sendPeriodicReport(w, s, risk)
+			sendPeriodicReport(report, risk)
+			time.Sleep(3 * time.Hour)
 		}
 	}()
 
 	log.Println("Cron started: weather check every 10min, report every 3hr")
 }
+
+// keep sql import used by latestAlertHandler via db.QueryRow
+var _ = sql.ErrNoRows
