@@ -1,3 +1,5 @@
+// Package main is a home flood-alert server that monitors weather and air quality
+// and sends Discord notifications when rain risk is elevated.
 package main
 
 import (
@@ -9,6 +11,8 @@ import (
 )
 
 func main() {
+	// Falls back to real env vars so the same binary works in both dev (.env) and
+	// systemd production (env set in the unit file).
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using environment variables")
 	}
@@ -16,13 +20,7 @@ func main() {
 	initDB()
 	startCron()
 
-	http.HandleFunc("/api/sensor", sensorHandler)
-	http.HandleFunc("/api/alert/latest", latestAlertHandler)
-	http.HandleFunc("/api/weather/fetch", weatherFetchHandler)
-	http.HandleFunc("/api/weather/report", weatherReportHandler)
-	http.HandleFunc("/api/test/high-risk", testHighRiskHandler)
-	http.HandleFunc("/api/test/peroid", testPeroidWeatherHandler)
-	http.HandleFunc("/health", healthHandler)
+	registerRoutes()
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -1,5 +1,7 @@
 package main
 
+// SensorData is the JSON payload posted by the ESP32 board via /api/sensor.
+// WaterDetected is 1 when the water sensor is triggered, 0 otherwise.
 type SensorData struct {
 	Location      string  `json:"location"`
 	Humidity      float64 `json:"humidity"`
@@ -7,6 +9,9 @@ type SensorData struct {
 	WaterDetected int     `json:"water_detected"`
 }
 
+// WeatherData mirrors the weather_data table row used by checkRisk.
+// RainProbability is sourced from the next-hour forecast, not current conditions,
+// so it reflects imminent risk rather than what is already falling.
 type WeatherData struct {
 	Temperature     float64 `json:"temperature"`
 	Humidity        float64 `json:"humidity"`
@@ -52,6 +57,8 @@ type WeatherReport struct {
 	Next3Hours HourlySnapshot `json:"forecast_3h"`
 }
 
+// Alert records every risk-level transition. The latest row is the current risk state;
+// the full history lets you audit when and how often alerts were triggered.
 type Alert struct {
 	RiskLevel string `json:"risk_level"`
 	Message   string `json:"message"`

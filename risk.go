@@ -10,6 +10,8 @@ func isWestWind(degrees float64) bool {
 	return degrees >= 225 && degrees <= 315
 }
 
+// riskRank converts a risk level string to an integer so transitions can be
+// compared directionally (e.g. LOW→HIGH vs HIGH→LOW) without string comparisons.
 func riskRank(level string) int {
 	switch level {
 	case "HIGH":
@@ -21,7 +23,7 @@ func riskRank(level string) int {
 	}
 }
 
-func checkRisk() {
+func checkWeatherRisk() {
 	var w WeatherData
 	err := db.QueryRow(
 		`SELECT temperature, humidity, rain_probability, rainfall, wind_speed, wind_direction
@@ -84,7 +86,7 @@ func checkRisk() {
 		if fetchErr != nil {
 			log.Println("Could not fetch report for urgent alert:", fetchErr)
 		} else {
-			sendUrgentAlert(report)
+			sendUrgentWeatherAlert(report)
 		}
 	case newRisk == "MEDIUM":
 		report, fetchErr := fetchWeatherReport()
@@ -98,4 +100,19 @@ func checkRisk() {
 	}
 
 	log.Printf("Risk changed: %s → %s", lastRisk, newRisk)
+}
+
+func checkAQIRisk() {
+	aqi := fetchAQI()
+	if aqi == nil {
+		return
+	}
+	if aqi.CurrentAQI.AQI >= 151 {
+		sendUrgentAQIAlert(aqi)
+	}
+}
+
+func checkRisk() {
+	checkWeatherRisk()
+	checkAQIRisk()
 }

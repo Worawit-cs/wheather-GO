@@ -11,7 +11,6 @@ func startCron() {
 	go func() {
 		for {
 			fetchWeather()
-			fetchAQI()
 			checkRisk()
 			time.Sleep(10 * time.Minute)
 		}

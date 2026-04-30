@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 )
 
+// sensorHandler receives sensor readings from the ESP32 board.
+// DB write is disabled until the board is reconnected (see commented block below).
 func sensorHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -35,6 +38,8 @@ func sensorHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
+// latestAlertHandler returns the most recent risk level from the alerts table.
+// Returns LOW with empty fields when no alerts have been recorded yet.
 func latestAlertHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -60,6 +65,8 @@ func latestAlertHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(alert)
 }
 
+// weatherFetchHandler manually triggers a weather fetch + risk check outside the
+// normal 10-minute cron cycle. Useful for testing without waiting for the next tick.
 func weatherFetchHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -110,11 +117,14 @@ func testHighRiskHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok","note":"Injected HIGH risk data — check Discord"}`))
 }
 
+// healthHandler is a liveness probe used by systemd/uptime monitoring.
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
+// testPeroidWeatherHandler manually fires the 3-hour periodic Discord report
+// without waiting for the cron goroutine, useful for verifying the report format.
 func testPeroidWeatherHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -138,4 +148,25 @@ func testPeroidWeatherHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok","note":"Triggered periodic report — check Discord"}`))
+}
+
+// testUrgentAQIAlertHandler fires sendUrgentAQIAlert with mock data for Discord testing.
+func testUrgentAQIAlertHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	mock := &aqiResponse{}
+	mock.CurrentAQI.AQI = 175
+	mock.CurrentAQI.PM25 = 72.4
+	mock.CurrentAQI.PM10 = 110.0
+	mock.CurrentAQI.CodeText = "Unhealthy"
+	mock.CurrentAQI.City = "Mae Sai (test)"
+	mock.CurrentAQI.Time = time.Now().Format("15:04")
+
+	sendUrgentAQIAlert(mock)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","note":"Fired urgent AQI alert — check Discord"}`))
 }

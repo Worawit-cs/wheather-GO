@@ -1,8 +1,5 @@
 package main
 
-/*
-https://api.waqi.info/feed/OS.ENV.MAESAI_CODE/?token=OS.env.AQI_TOKEN
-*/
 import (
 	"encoding/json"
 	"fmt"
@@ -35,11 +32,12 @@ type openMeteoResponse struct {
 
 type aqiResponse struct {
 	CurrentAQI struct {
-		AQI  int     `json:"aqi"`
-		PM25 float64 `json:"pm25"`
-		PM10 float64 `json:"pm10"`
-		Time string  `json:"time"`
-		City string  `json:"city"`
+		CodeText string  `json:"aqi_text"`
+		AQI      int     `json:"aqi"`
+		PM25     float64 `json:"pm25"`
+		PM10     float64 `json:"pm10"`
+		Time     string  `json:"time"`
+		City     string  `json:"city"`
 	}
 	DailyAQI struct {
 		PM10 []PM10Detail `json:"pm10"`
@@ -69,8 +67,12 @@ type waqiRawResponse struct {
 			Name string `json:"name"`
 		} `json:"city"`
 		IAQI struct {
-			PM25 struct{ V float64 `json:"v"` } `json:"pm25"`
-			PM10 struct{ V float64 `json:"v"` } `json:"pm10"`
+			PM25 struct {
+				V float64 `json:"v"`
+			} `json:"pm25"`
+			PM10 struct {
+				V float64 `json:"v"`
+			} `json:"pm10"`
 		} `json:"iaqi"`
 		Time struct {
 			S string `json:"s"`
@@ -84,6 +86,8 @@ type waqiRawResponse struct {
 	} `json:"data"`
 }
 
+// wmoCodeText converts a WMO weather interpretation code (used by Open-Meteo)
+// to a human-readable string for display in Discord embeds.
 func wmoCodeText(code int) string {
 	switch code {
 	case 0:
@@ -147,6 +151,7 @@ func wmoCodeText(code int) string {
 	}
 }
 
+// aqiCodeText maps a numeric AQI value to the US EPA category label.
 func aqiCodeText(code int) string {
 	switch {
 	case code <= 50:
@@ -289,6 +294,8 @@ func fetchWeather() *WeatherReport {
 	return report
 }
 
+// fetchAQIReport calls the WAQI API and maps the raw response to aqiResponse.
+// It is split from fetchAQI so the pure HTTP+parse logic can be tested independently.
 func fetchAQIReport(city, token string) (*aqiResponse, error) {
 	resp, err := http.Get(buildAQIAPIURL(city, token))
 	if err != nil {
@@ -305,6 +312,7 @@ func fetchAQIReport(city, token string) (*aqiResponse, error) {
 	}
 
 	result := &aqiResponse{}
+	result.CurrentAQI.CodeText = aqiCodeText(raw.Data.AQI)
 	result.CurrentAQI.AQI = raw.Data.AQI
 	result.CurrentAQI.PM25 = raw.Data.IAQI.PM25.V
 	result.CurrentAQI.PM10 = raw.Data.IAQI.PM10.V

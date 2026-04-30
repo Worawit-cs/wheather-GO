@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,28 @@ type discordPayload struct {
 	Embeds  []discordEmbed `json:"embeds"`
 }
 
+// function code-text mapping with their colour
+func codeToColour(code string) int {
+	switch strings.ToLower(code) {
+	case "good":
+		return 5857280
+	case "moderate":
+		return 16776960
+	case "unhealthy for sensitive groups":
+		return 16744448
+	case "unhealthy":
+		return 16711680
+	case "very unhealthy":
+		return 9381719
+	case "hazardous":
+		return 8257539
+	default:
+		return 8421504 // เทา fallback
+	}
+}
+
+// sendDiscord is the single exit point for all Discord notifications.
+// All other send* functions build a payload and call this.
 func sendDiscord(payload discordPayload) {
 	webhookURL := os.Getenv("DISCORD_WEBHOOK_URL")
 	if webhookURL == "" {
@@ -96,7 +119,9 @@ func shortTime(t string) string {
 	return t
 }
 
-func sendUrgentAlert(report *WeatherReport) {
+// sendUrgentAlert fires when risk transitions to HIGH. Uses @everyone so the
+// notification breaks through Do Not Disturb on mobile Discord.
+func sendUrgentWeatherAlert(report *WeatherReport) {
 	c := report.Current
 	embed := discordEmbed{
 		Title: "🚨 FLOOD RISK ALERT — HIGH",
@@ -118,7 +143,46 @@ func sendUrgentAlert(report *WeatherReport) {
 		Content: "@everyone",
 		Embeds:  []discordEmbed{embed},
 	})
-	log.Println("Urgent alert sent to Discord")
+	log.Println("Urgent alert sent to Discord (weather report)")
+}
+
+// send urgent aqi alert when AQI is overwelhm
+func sendUrgentAQIAlert(aqi *aqiResponse) {
+	c := aqi.CurrentAQI
+	embed := discordEmbed{
+		Title: fmt.Sprintf("🚨 AQI RISK ALERT — %s 💨\n ⚠️status: %s", c.City, c.CodeText),
+		Color: codeToColour(c.CodeText),
+		Fields: []embedField{
+			{
+				Name:   "🕒 TIME",
+				Value:  fmt.Sprintf("%s", shortTime(c.Time)),
+				Inline: true,
+			},
+			{
+				Name:   "📊 AQI",
+				Value:  fmt.Sprintf("%d", c.AQI),
+				Inline: true,
+			},
+			{
+				Name:   "💨 PM2.5",
+				Value:  fmt.Sprintf("%.1f μg/m³", c.PM25),
+				Inline: true,
+			},
+			{
+				Name:   "🌫️ PM10",
+				Value:  fmt.Sprintf("%.1f μg/m³", c.PM10),
+				Inline: true,
+			},
+		},
+		Footer:    &embedFooter{Text: "Avoid outdoor activities ⚠️"},
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	sendDiscord(discordPayload{
+		Content: "@everyone",
+		Embeds:  []discordEmbed{embed},
+	})
+	log.Println("Urgent alert sent to Discord (weather report)")
 }
 
 func sendAllClear() {
@@ -133,19 +197,30 @@ func sendAllClear() {
 	log.Println("All Clear sent to Discord")
 }
 
+// aqiReportLabel maps an AQI value + WAQI code text to the correct
+// Discord embed title and colour for the periodic AQI report.
+func aqiReportLabel(aqiVal int, codeText string) (string, int) {
+	var title string
+	switch {
+	case aqiVal > 300:
+		title = "🌫️ Air Quality Report — HAZARDOUS"
+	case aqiVal > 200:
+		title = "🌫️ Air Quality Report — VERY UNHEALTHY"
+	case aqiVal > 150:
+		title = "🌫️ Air Quality Report — UNHEALTHY"
+	case aqiVal > 100:
+		title = "🌫️ Air Quality Report — UNHEALTHY FOR SENSITIVE GROUPS"
+	case aqiVal > 50:
+		title = "🌫️ Air Quality Report — MODERATE"
+	default:
+		title = "🌫️ Air Quality Report — GOOD"
+	}
+	return title, codeToColour(codeText)
+}
+
 func sendAQIReport(aqi *aqiResponse) {
 	c := aqi.CurrentAQI
-
-	color := colorGreen
-	title := "🌫️ Air Quality Report — GOOD"
-	switch {
-	case c.AQI > 100:
-		color = colorRed
-		title = "🌫️ Air Quality Report — UNHEALTHY"
-	case c.AQI > 50:
-		color = colorYellow
-		title = "🌫️ Air Quality Report — MODERATE"
-	}
+	title, color := aqiReportLabel(c.AQI, c.CodeText)
 
 	// Derive "today" from the WAQI response timestamp (station's local timezone),
 	// not time.Now(), to avoid a server UTC vs. station UTC+7 mismatch.
