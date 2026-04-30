@@ -3,11 +3,11 @@ Description=Weather Alert Server
 After=network.target
 
 [Service]
-WorkingDirectory=/home/user/wheather-GO
-ExecStart=/home/user/wheather-GO/server
+WorkingDirectory=/home/wick/weather-GO
+ExecStart=/home/wick/weather-GO/server
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/user/wheather-GO/.env
+EnvironmentFile=/home/wick/weather-GO/.env
 
 [Install]
 WantedBy=multi-user.target
