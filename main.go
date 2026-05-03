@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
@@ -20,6 +21,22 @@ func main() {
 	initDB()
 	startCron()
 
+	// Bot intitialize
+	s, err := discordgo.New("Bot " + os.Getenv("WEATHER_BOT_KEY"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	registerDiscordHandlers(s)
+	s.Identify.Intents = discordgo.IntentsAllWithoutPrivileged | discordgo.IntentMessageContent
+
+	err = s.Open()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer s.Close()
+	discordSession = s
+
+	// HTTP server
 	registerRoutes()
 
 	port := os.Getenv("PORT")

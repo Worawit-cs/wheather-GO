@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 const (
@@ -16,6 +18,9 @@ const (
 	colorYellow = 0xFFA500
 	colorGreen  = 0x00CC44
 )
+
+// Testing BOT
+const DEBUG = true
 
 type discordEmbed struct {
 	Title       string       `json:"title"`
@@ -61,10 +66,52 @@ func codeToColour(code string) int {
 	}
 }
 
+func toDiscordgoEmbed(e discordEmbed) *discordgo.MessageEmbed {
+	embed := &discordgo.MessageEmbed{
+		Title:       e.Title,
+		Description: e.Description,
+		Color:       e.Color,
+		Timestamp:   e.Timestamp,
+	}
+	for _, f := range e.Fields {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   f.Name,
+			Value:  f.Value,
+			Inline: f.Inline,
+		})
+	}
+	if e.Footer != nil {
+		embed.Footer = &discordgo.MessageEmbedFooter{Text: e.Footer.Text}
+	}
+	return embed
+}
+
+func sendBotToMaesai(payload discordPayload) {
+	channelID := os.Getenv("MAESAI_CHANNEL")
+	if discordSession == nil || channelID == "" {
+		return
+	}
+	embeds := make([]*discordgo.MessageEmbed, 0, len(payload.Embeds))
+	for _, e := range payload.Embeds {
+		embeds = append(embeds, toDiscordgoEmbed(e))
+	}
+	_, err := discordSession.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content: payload.Content,
+		Embeds:  embeds,
+	})
+	if err != nil {
+		log.Printf("Bot channel send error: %v", err)
+	}
+}
+
 // sendDiscord is the single exit point for all Discord notifications.
 // All other send* functions build a payload and call this.
 func sendDiscord(payload discordPayload) {
-	webhookURL := os.Getenv("DISCORD_WEBHOOK_URL")
+	URL := "DISCORD_WEBHOOK_MAESAI_URL"
+	if DEBUG {
+		URL = os.Getenv("DISCORD_WEBHOOK_TEST_URL")
+	}
+	webhookURL := os.Getenv(URL)
 	if webhookURL == "" {
 		log.Println("DISCORD_WEBHOOK_URL not set, skipping notification")
 		return
@@ -139,10 +186,9 @@ func sendUrgentWeatherAlert(report *WeatherReport) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	sendDiscord(discordPayload{
-		Content: "@everyone",
-		Embeds:  []discordEmbed{embed},
-	})
+	p := discordPayload{Content: "@everyone", Embeds: []discordEmbed{embed}}
+	sendDiscord(p)
+	sendBotToMaesai(p)
 	log.Println("Urgent alert sent to Discord (weather report)")
 }
 
@@ -178,10 +224,9 @@ func sendUrgentAQIAlert(aqi *aqiResponse) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	sendDiscord(discordPayload{
-		Content: "@everyone",
-		Embeds:  []discordEmbed{embed},
-	})
+	p := discordPayload{Content: "@everyone", Embeds: []discordEmbed{embed}}
+	sendDiscord(p)
+	sendBotToMaesai(p)
 	log.Println("Urgent alert sent to Discord (weather report)")
 }
 
@@ -193,7 +238,9 @@ func sendAllClear() {
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 	}
 
-	sendDiscord(discordPayload{Embeds: []discordEmbed{embed}})
+	p := discordPayload{Embeds: []discordEmbed{embed}}
+	sendDiscord(p)
+	sendBotToMaesai(p)
 	log.Println("All Clear sent to Discord")
 }
 
@@ -298,7 +345,9 @@ func sendAQIReport(aqi *aqiResponse) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	sendDiscord(discordPayload{Embeds: []discordEmbed{embed}})
+	p := discordPayload{Embeds: []discordEmbed{embed}}
+	sendDiscord(p)
+	sendBotToMaesai(p)
 	log.Println("AQI report sent to Discord")
 }
 
@@ -340,6 +389,8 @@ func sendPeriodicReport(report *WeatherReport, risk string) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	sendDiscord(discordPayload{Embeds: []discordEmbed{embed}})
+	p := discordPayload{Embeds: []discordEmbed{embed}}
+	sendDiscord(p)
+	sendBotToMaesai(p)
 	log.Println("Periodic report sent to Discord")
 }
